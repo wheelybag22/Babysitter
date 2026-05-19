@@ -157,7 +157,7 @@ with tab_log:
     with col2:
         pickup = time_select("Pick-up time", time(15, 30))
 
-    num_kids = st.selectbox("Number of kids", [1, 2, 3], index=0)
+    num_kids = st.selectbox("Number of kids", [1, 2, 3], index=2)
 
     dt_drop = datetime.combine(work_date, dropoff)
     dt_pick = datetime.combine(work_date, pickup)
@@ -215,9 +215,10 @@ with tab_week:
         week_hours = df_week["hours"].sum()
         week_pay = df_week["pay"].sum()
 
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         col1.metric("Hours", f"{week_hours:.2f} hrs")
-        col2.metric("Total to pay out", f"${week_pay:.2f}")
+        col2.metric("Total payout", f"${week_pay:.2f}")
+        col3.metric("Wife's share (1/3)", f"${week_pay / 3:.2f}")
 
         st.divider()
         st.caption("Sessions")
