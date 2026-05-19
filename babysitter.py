@@ -51,9 +51,11 @@ def get_sheet():
 
 def init_db():
     sheet = get_sheet()
-    # Write the header row if the sheet is empty
-    if not sheet.row_values(1):
+    header = sheet.row_values(1)
+    if not header:
         sheet.append_row(SHEET_COLS)
+    elif header != SHEET_COLS:
+        sheet.update("A1", [SHEET_COLS])
 
 
 def add_session(work_date, dropoff: time, pickup: time, num_kids: int, notes=""):
@@ -218,7 +220,7 @@ with tab_week:
         col1, col2, col3 = st.columns(3)
         col1.metric("Hours", f"{week_hours:.2f} hrs")
         col2.metric("Total payout", f"${week_pay:.2f}")
-        col3.metric("Wife's share (1/3)", f"${week_pay / 3:.2f}")
+        col3.metric("Morgan's share (1/3)", f"${week_pay / 3:.2f}")
 
         st.divider()
         st.caption("Sessions")
