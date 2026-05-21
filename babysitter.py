@@ -1,5 +1,6 @@
 import uuid
 import streamlit as st
+import streamlit.components.v1 as components
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
@@ -145,6 +146,12 @@ tab_log, tab_week, tab_history, tab_analytics = st.tabs(
     ["Log Hours", "This Week", "History", "Analytics"]
 )
 
+if st.session_state.pop("switch_to_week", False):
+    components.html(
+        "<script>window.parent.document.querySelectorAll('[data-baseweb=\"tab\"]')[1].click();</script>",
+        height=0,
+    )
+
 df_all = load_all()
 
 # ── LOG HOURS ────────────────────────────────────────────────────────────────
@@ -181,6 +188,7 @@ with tab_log:
     if st.button("✅ Save Session", use_container_width=True):
         hours_saved, pay_saved = add_session(work_date, dropoff, pickup, num_kids, notes)
         st.success(f"Saved! {SITTER} earned **${pay_saved:.2f}** for {hours_saved:.2f} hrs on {work_date}.")
+        st.session_state.switch_to_week = True
         st.rerun()
 
 # ── THIS WEEK ────────────────────────────────────────────────────────────────
