@@ -6,11 +6,12 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime, date, timedelta, time
 
-RATE = 5.00
 SITTER = "Shawna"
+KID_RATES = {"M1": 5.00, "M2": 6.00, "M3": 6.00}
+ALL_KIDS = list(KID_RATES.keys())
 
 SHEET_COLS = ["id", "logged_at", "work_date", "sitter",
-              "dropoff_time", "pickup_time", "num_kids", "hours", "pay", "notes"]
+              "dropoff_time", "pickup_time", "kids", "hours", "pay", "notes"]
 
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -36,6 +37,10 @@ def time_select(label: str, default: time) -> time:
     return values[labels.index(chosen)]
 
 
+def calc_rate(kids: list) -> float:
+    return sum(KID_RATES[k] for k in kids)
+
+
 # ─── GOOGLE SHEETS CLIENT ────────────────────────────────────────────────────
 
 @st.cache_resource
@@ -59,13 +64,13 @@ def init_db():
         sheet.update("A1", [SHEET_COLS])
 
 
-def add_session(work_date, dropoff: time, pickup: time, num_kids: int, notes=""):
+def add_session(work_date, dropoff: time, pickup: time, kids: list, notes=""):
     dt_drop = datetime.combine(work_date, dropoff)
     dt_pick = datetime.combine(work_date, pickup)
     if dt_pick <= dt_drop:
         dt_pick += timedelta(days=1)
     hours = round((dt_pick - dt_drop).total_seconds() / 3600, 4)
-    pay = round(hours * RATE * num_kids, 2)
+    pay = round(hours * calc_rate(kids), 2)
     session_id = str(uuid.uuid4())
     logged_at = datetime.now().isoformat(timespec="seconds")
     get_sheet().append_row([
@@ -75,7 +80,7 @@ def add_session(work_date, dropoff: time, pickup: time, num_kids: int, notes="")
         SITTER,
         dropoff.strftime("%H:%M"),
         pickup.strftime("%H:%M"),
-        num_kids,
+        ",".join(kids),
         hours,
         pay,
         notes,
@@ -126,12 +131,11 @@ def fmt_time(t_str):
 def session_label(row):
     drop = fmt_time(row.get("dropoff_time"))
     pick = fmt_time(row.get("pickup_time"))
-    kids = int(row.get("num_kids") or 1)
-    kids_str = f"  •  {kids} kid{'s' if kids > 1 else ''}"
+    kids_str = row.get("kids") or "—"
     return (
         f"{row['work_date'].strftime('%a %b %d')}  •  "
         f"drop-off {drop} → pick-up {pick}  •  "
-        f"{row['hours']:.2f} hrs{kids_str}  •  ${row['pay']:.2f}"
+        f"{kids_str}  •  {row['hours']:.2f} hrs  •  ${row['pay']:.2f}"
     )
 
 
@@ -166,7 +170,12 @@ with tab_log:
     with col2:
         pickup = time_select("Pick-up time", time(15, 30))
 
-    num_kids = st.selectbox("Number of kids", [1, 2, 3], index=2)
+    st.caption("Kids attending")
+    kcol1, kcol2, kcol3 = st.columns(3)
+    m1 = kcol1.checkbox("M1  ($5/hr)", value=True)
+    m2 = kcol2.checkbox("M2  ($6/hr)", value=True)
+    m3 = kcol3.checkbox("M3  ($6/hr)", value=True)
+    kids = [k for k, selected in [("M1", m1), ("M2", m2), ("M3", m3)] if selected]
 
     dt_drop = datetime.combine(work_date, dropoff)
     dt_pick = datetime.combine(work_date, pickup)
@@ -176,17 +185,23 @@ with tab_log:
     else:
         overnight_note = ""
     preview_hours = (dt_pick - dt_drop).total_seconds() / 3600
-    preview_pay = round(preview_hours * RATE * num_kids, 2)
 
-    st.info(
-        f"**{preview_hours:.2f} hrs{overnight_note}  →  ${preview_pay:.2f}**  "
-        f"({fmt_time(dropoff.strftime('%H:%M'))} – {fmt_time(pickup.strftime('%H:%M'))} @ ${RATE:.0f}/hr × {num_kids} kid{'s' if num_kids > 1 else ''})"
-    )
+    if kids:
+        rate = calc_rate(kids)
+        preview_pay = round(preview_hours * rate, 2)
+        rate_breakdown = " + ".join(f"{k} ${KID_RATES[k]:.0f}" for k in kids)
+        st.info(
+            f"**{preview_hours:.2f} hrs{overnight_note}  →  ${preview_pay:.2f}**  \n"
+            f"{fmt_time(dropoff.strftime('%H:%M'))} – {fmt_time(pickup.strftime('%H:%M'))}  •  {rate_breakdown}  =  ${rate:.0f}/hr"
+        )
+    else:
+        st.warning("Select at least one kid.")
+        preview_pay = 0
 
     notes = st.text_input("Notes (optional)", placeholder="e.g. overnight, extra chores")
 
-    if st.button("✅ Save Session", use_container_width=True):
-        hours_saved, pay_saved = add_session(work_date, dropoff, pickup, num_kids, notes)
+    if st.button("✅ Save Session", use_container_width=True, disabled=not kids):
+        hours_saved, pay_saved = add_session(work_date, dropoff, pickup, kids, notes)
         st.success(f"Saved! {SITTER} earned **${pay_saved:.2f}** for {hours_saved:.2f} hrs on {work_date}.")
         st.session_state.switch_to_week = True
         st.rerun()
@@ -261,7 +276,7 @@ with tab_history:
                     st.rerun()
 
         st.divider()
-        dl = df_hist[["work_date", "dropoff_time", "pickup_time", "num_kids", "hours", "pay", "notes"]].copy()
+        dl = df_hist[["work_date", "dropoff_time", "pickup_time", "kids", "hours", "pay", "notes"]].copy()
         dl["work_date"] = dl["work_date"].dt.strftime("%Y-%m-%d")
         st.download_button("⬇ Download CSV", dl.to_csv(index=False), "babysitter_history.csv", "text/csv")
 
